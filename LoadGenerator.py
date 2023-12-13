@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[18]:
-
-
 import requests
+from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 import time
 import os
@@ -18,57 +16,65 @@ frequency = int(frequency)
 
 print(target)
 print(frequency)
-total_success = 0
-total_failure = 0
-total_time = 0
+
 
 def make_api_request():
-    response = requests.get(target, timeout=10)
-    if response.status_code == 200:
-        print('API request successful')
-        t = response.text
-        result = re.split(r'\s+', t)
-        return {
-            'success': 1,
-            'failed': 0,
-            'response_time': int(result[1])
-        }
-    else:
-        print('Failed to make API request')
+    try:
+        response = requests.get(target, timeout=10)
+        if response.status_code == 200:
+            print('API request successful')
+            t = response.text
+            result = re.split(r'\s+', t)
+            return {
+                'success': 1,
+                'failed': 0,
+                'response_time': int(result[1])
+            }
+        else:
+            print('Failed to make API request')
+            return {
+                'success': 0,
+                'failed': 1,
+                'response_time': 0
+            }
+    except requests.exceptions.Timeout:
+        print('Timeout occurred during API request')
         return {
             'success': 0,
             'failed': 1,
             'response_time': 0
         }
 
-# Loop to make requests indefinitely
-while True:
-    # Make an API request
-    result =make_api_request()
+def run_in_thread(func, executor, sleep_time):
+    return executor.submit(func).result(), sleep_time
 
-    total_success += result['success']
-    total_failure += result['failed']
-    total_time += result['response_time']
+def main():
+    total_success = 0
+    total_failure = 0
+    total_time = 0
+    executor = ThreadPoolExecutor(max_workers=frequency)
+    start_time = time.time()
+    
 
-    time_to_sleep = 1 / frequency - result['response_time']
-    if time_to_sleep > 0:
-        time.sleep(time_to_sleep)
+    while True:
+        # Make an API request using a thread
+        sleep_time = 1 / frequency
+        result, sleep_time = run_in_thread(make_api_request, executor, sleep_time)
 
-    # Calculate average response time
-    if total_success > 0:
-        average_response_time = total_time / total_success
-    else:
-        average_response_time = 0
+        total_success += result['success']
+        total_failure += result['failed']
+        total_time += result['response_time']
 
-    #print(f"Total successful requests: {success_count}")
-    print(f"Total failed requests: {total_failure}")
-    print(f"Average response time: {average_response_time:.4f} seconds")
+        time.sleep(sleep_time)
 
-#print(type(frequency))
+        # Calculate average response time
+        if total_success > 0:
+            average_response_time = total_time / total_success
+        else:
+            average_response_time = 0
+        #print(f"Total success requests: {total_success}")
+        print(f"Total failed requests: {total_failure}")
+        print(f"Average response time: {average_response_time:.4f} seconds")
 
-
-# In[ ]:
-
-
-
-
+if __name__ == "__main__":
+    main()
